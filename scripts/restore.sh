@@ -76,14 +76,6 @@ is_restoring_pane_contents() {
 	[ "$RESTORE_PANE_CONTENTS" == "true" ]
 }
 
-restored_session_0_true() {
-	RESTORED_SESSION_0="true"
-}
-
-has_restored_session_0() {
-	[ "$RESTORED_SESSION_0" == "true" ]
-}
-
 window_exists() {
 	local session_name="$1"
 	local window_number="$2"
@@ -178,9 +170,6 @@ restore_pane() {
 	while IFS=$d read line_type session_name window_number window_active window_flags pane_index pane_title dir pane_active pane_command pane_full_command; do
 		dir="$(remove_first_char "$dir")"
 		pane_full_command="$(remove_first_char "$pane_full_command")"
-		if [ "$session_name" == "0" ]; then
-			restored_session_0_true
-		fi
 		if pane_exists "$session_name" "$window_number" "$pane_index"; then
 			if is_restoring_from_scratch; then
 				# overwrite the pane
@@ -274,18 +263,7 @@ restore_all_panes() {
 	done < $(last_resurrect_file)
 }
 
-handle_session_0() {
-	if is_restoring_from_scratch && ! has_restored_session_0; then
-		local current_session="$(tmux display -p "#{client_session}")"
-		if [ "$current_session" == "0" ]; then
-			tmux switch-client -n
-		fi
-		tmux kill-session -t "0"
-	fi
-}
-
-restore_window_properties() {
-	local window_name
+restore_pane_layout_for_each_window() {
 	\grep '^window' $(last_resurrect_file) |
 		while IFS=$d read line_type session_name window_number window_name window_active window_flags window_layout automatic_rename; do
 			tmux select-layout -t "${session_name}:${window_number}" "$window_layout"
@@ -368,8 +346,11 @@ main() {
 		start_spinner "Restoring..." "Tmux restore complete!"
 		execute_hook "pre-restore-all"
 		restore_all_panes
-		handle_session_0
-		restore_window_properties >/dev/null 2>&1
+		restore_pane_layout_for_each_window >/dev/null 2>&1
+		execute_hook "pre-restore-history"
+		if save_shell_history_option_on; then
+			restore_shell_history
+		fi
 		execute_hook "pre-restore-pane-processes"
 		restore_all_pane_processes
 		# below functions restore exact cursor positions
